@@ -1,0 +1,1125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Annie’s Dorm">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0e0e11">
+<title>Annie’s Dorm</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<style>
+  :root {
+    --bg:#0e0e11; --card:#1a1a1f; --card-hi:#232329;
+    --ink:#f2f1ef; --ink-soft:#9b968f; --ink-faint:#6b6761; --rule:#2a2a31;
+    --on:#f5c46b; --on-glow:rgba(245,196,107,.16);
+    --cool:#6bc7f5; --live:#5fbf8a; --dead:#d4695e;
+    --radius:20px; --sheet-ease:cubic-bezier(.32,.72,0,1);
+    --pad:18px; --tile-h:104px; --gap:12px;
+  }
+  /* Light palette, defined twice on purpose: once for "follow the
+     system" and once for an explicit choice from the bulb button.
+     [data-theme] always wins over the media query, in both directions,
+     so the toggle works even on a device set to the opposite mode. */
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg:#f4f2ee; --card:#fff; --card-hi:#faf8f5;
+      --ink:#1d1b19; --ink-soft:#6b6660; --ink-faint:#97918a; --rule:#e4e0d9;
+      --on:#d99a2b; --on-glow:rgba(217,154,43,.12); --cool:#2f8fbf;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg:#f4f2ee; --card:#fff; --card-hi:#faf8f5;
+    --ink:#1d1b19; --ink-soft:#6b6660; --ink-faint:#97918a; --rule:#e4e0d9;
+    --on:#d99a2b; --on-glow:rgba(217,154,43,.12); --cool:#2f8fbf;
+  }
+  :root[data-theme="dark"] {
+    --bg:#0e0e11; --card:#1a1a1f; --card-hi:#232329;
+    --ink:#f2f1ef; --ink-soft:#9b968f; --ink-faint:#6b6761; --rule:#2a2a31;
+    --on:#f5c46b; --on-glow:rgba(245,196,107,.16); --cool:#6bc7f5;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;height:100%;overflow:hidden}
+  body{
+    background:var(--bg);color:var(--ink);
+    font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;user-select:none;
+    display:flex;flex-direction:column;
+    padding:max(8px,env(safe-area-inset-top)) var(--pad) calc(14px + env(safe-area-inset-bottom));
+    max-width:900px;margin:0 auto;
+  }
+
+  /* ── top bar ────────────────────────────────────────────── */
+  header{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:10px;flex:0 0 auto}
+  .crumb{display:flex;align-items:center;gap:9px;min-width:0}
+  #back{
+    display:none;width:34px;height:34px;flex:0 0 auto;border-radius:11px;border:1px solid var(--rule);
+    background:var(--card);color:var(--ink-soft);cursor:pointer;padding:0;place-items:center;
+  }
+  #back svg{width:17px;height:17px;display:block}
+  body[data-view="controls"] #back{display:grid}
+  h1{font-size:21px;font-weight:700;letter-spacing:-.02em;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .topright{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+  #status{
+    display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;
+    color:var(--ink-soft);padding:6px 12px 6px 10px;border-radius:999px;
+    background:var(--card);border:1px solid var(--rule);white-space:nowrap;
+  }
+  #dot{width:7px;height:7px;border-radius:50%;background:var(--ink-faint);flex:0 0 auto}
+  #dot.live{background:var(--live);box-shadow:0 0 0 3px rgba(95,191,138,.18)}
+  #dot.dead{background:var(--dead);box-shadow:0 0 0 3px rgba(212,105,94,.18)}
+  #dot.wait{background:var(--on);animation:pulse 1.1s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  #gear,#bulb{
+    width:38px;height:38px;border-radius:12px;border:1px solid var(--rule);background:var(--card);
+    color:var(--ink-soft);cursor:pointer;padding:0;display:grid;place-items:center;flex:0 0 auto;
+    transition:color .15s,background .15s;
+  }
+  #gear:hover,#gear:active,#bulb:hover,#bulb:active{color:var(--ink);background:var(--card-hi)}
+  #gear svg,#bulb svg{width:19px;height:19px;display:block}
+  /* Filament lit while the page is dark. Set from JS, which is the only
+     place that actually knows the resolved theme. */
+  #bulb.lit{color:var(--on)}
+
+  .card{background:var(--card);border:1px solid var(--rule);border-radius:var(--radius)}
+  .view{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:var(--gap)}
+  .view[hidden]{display:none}
+  [hidden]{display:none!important}
+
+  /* ── HOME: clock ────────────────────────────────────────── */
+  /* On a tall phone the clock sits in its own block and the whole
+     column centres; on the short landscape panel it grows to fill
+     instead (see the panel media query). */
+  #view-home{justify-content:center}
+  /* Time and date sit on one baseline: the numerals carry the weight,
+     the date hangs off the right in a light face so it reads as a
+     caption rather than competing with the clock. */
+  .clock{
+    flex:0 1 auto;min-height:0;display:flex;flex-direction:row;flex-wrap:wrap;
+    align-items:baseline;justify-content:center;align-content:center;
+    gap:0 clamp(14px,3.5vw,34px);
+    padding:clamp(18px,4vh,44px) 18px;
+  }
+  .clock .t{
+    font-size:clamp(68px,21vw,150px);font-weight:200;letter-spacing:-.05em;line-height:.9;
+    font-variant-numeric:tabular-nums;display:flex;align-items:baseline;gap:.05em;
+  }
+  .clock .t .ampm{font-size:.24em;font-weight:500;letter-spacing:.02em;color:var(--ink-soft)}
+  .clock .d{
+    display:flex;flex-direction:column;align-items:flex-end;text-align:right;
+    font-weight:300;color:var(--ink-soft);letter-spacing:-.005em;line-height:1.18;
+  }
+  .clock .d .dow{font-size:clamp(17px,4.4vw,30px)}
+  .clock .d .dmy{font-size:clamp(15px,3.7vw,25px);color:var(--ink-faint)}
+
+  /* ── HOME: the two stat cards ───────────────────────────── */
+  .duo{display:grid;grid-template-columns:1fr 1fr;gap:var(--gap);flex:0 0 auto}
+  .duo .card{padding:13px 15px 12px;display:flex;flex-direction:column;min-width:0}
+  .duo .label{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint);font-weight:700;margin-bottom:8px}
+  .rowpair{display:flex;flex-direction:column;gap:7px}
+  .rd{display:flex;align-items:baseline;justify-content:space-between;gap:8px;min-width:0}
+  .rd .k{font-size:12.5px;color:var(--ink-soft);font-weight:600;white-space:nowrap}
+  .rd .v{font-size:clamp(21px,5.2vw,29px);font-weight:650;letter-spacing:-.025em;font-variant-numeric:tabular-nums;line-height:1}
+  .rd .v .u{font-size:.5em;font-weight:600;color:var(--ink-soft);margin-left:1px}
+  .rd.indoor .v{color:var(--on)}
+  .rd.outdoor .v{color:var(--cool)}
+  .foot{font-size:10.5px;color:var(--ink-faint);margin-top:auto;padding-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  /* ── HOME: controls button ──────────────────────────────── */
+  .bigbtn{
+    flex:0 0 auto;width:100%;padding:20px;border-radius:var(--radius);background:var(--card);
+    border:1px solid var(--rule);color:var(--ink);font-size:19px;font-weight:650;letter-spacing:-.01em;
+    cursor:pointer;font-family:inherit;transition:transform .1s,background .15s,border-color .15s;
+    display:flex;align-items:center;justify-content:center;gap:10px;
+  }
+  .bigbtn:active{transform:scale(.985);background:var(--card-hi)}
+  .bigbtn svg{width:20px;height:20px;display:block;color:var(--ink-soft)}
+  .bigbtn .count{font-size:13px;font-weight:600;color:var(--on);margin-left:2px}
+
+  /* ── CONTROLS ───────────────────────────────────────────── */
+  #view-controls{overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .grid{display:grid;gap:var(--gap);grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+  .tile{position:relative;display:flex;flex-direction:column;gap:8px;padding:14px;
+    min-height:var(--tile-h);cursor:pointer;text-align:left;font:inherit;color:inherit;
+    transition:background .18s,border-color .18s,box-shadow .18s,transform .1s}
+  .tile:active{transform:scale(.975)}
+  .tile.on{background:var(--card-hi);border-color:var(--on);box-shadow:0 0 0 4px var(--on-glow)}
+  .tile .icon{color:var(--ink-faint);transition:color .18s}
+  .tile .icon svg{width:22px;height:22px;display:block}
+  .tile.on .icon{color:var(--on)}
+  .tile .meta{margin-top:auto}
+  .tile .name{font-size:14.5px;font-weight:650;letter-spacing:-.01em}
+  .tile .sub{font-size:12px;color:var(--ink-soft);margin-top:1px}
+  .adjust{position:absolute;top:8px;right:8px;width:30px;height:30px;border-radius:9px;padding:0;
+    display:grid;place-items:center;cursor:pointer;background:transparent;border:none;
+    color:var(--ink-faint);transition:background .15s,color .15s}
+  .adjust svg{width:16px;height:16px;display:block}
+  .adjust:hover,.adjust:active{background:var(--card-hi);color:var(--ink)}
+  .tile.on .adjust{color:var(--on)}
+  .stale{opacity:.45}
+  .allof{width:100%;padding:14px;border-radius:var(--radius);background:var(--card);
+    border:1px solid var(--rule);color:var(--ink-soft);font-size:14.5px;font-weight:650;
+    cursor:pointer;font-family:inherit;transition:transform .1s,color .15s;margin-top:var(--gap)}
+  .allof:active{transform:scale(.98);color:var(--ink)}
+
+  /* ── sheets (device + settings) ─────────────────────────── */
+  #scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);opacity:0;pointer-events:none;
+    transition:opacity .28s var(--sheet-ease);z-index:40}
+  #scrim.open{opacity:1;pointer-events:auto}
+  .sheet{position:fixed;left:0;right:0;bottom:0;z-index:50;background:var(--card);
+    border-top:1px solid var(--rule);border-radius:26px 26px 0 0;
+    padding:10px 20px calc(20px + env(safe-area-inset-bottom));
+    transform:translateY(102%);transition:transform .34s var(--sheet-ease);
+    max-width:620px;margin:0 auto;max-height:94dvh;overflow-y:auto}
+  .sheet.open{transform:translateY(0)}
+  .grabber{width:38px;height:4px;border-radius:2px;background:var(--rule);margin:0 auto 12px}
+  .sheet-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:2px}
+  .sheet-title{font-size:20px;font-weight:700;letter-spacing:-.015em}
+  .sheet-sub{font-size:13px;color:var(--ink-soft);margin-top:1px}
+  .switch{position:relative;width:52px;height:31px;border-radius:999px;background:var(--rule);
+    border:none;cursor:pointer;transition:background .2s;flex:0 0 auto}
+  .switch::after{content:"";position:absolute;top:3px;left:3px;width:25px;height:25px;border-radius:50%;
+    background:#fff;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+  .switch.on{background:var(--on)}
+  .switch.on::after{transform:translateX(21px)}
+  label.field{display:block;font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--ink-faint);font-weight:700;margin:16px 0 8px}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:40px;background:transparent;cursor:pointer;margin:0}
+  input[type=range]::-webkit-slider-runnable-track{height:40px;border-radius:13px;border:1px solid var(--rule);
+    background:linear-gradient(90deg,var(--card-hi),var(--on))}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:32px;margin-top:4px;
+    border-radius:5px;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+  input[type=range]::-moz-range-track{height:40px;border-radius:13px;border:1px solid var(--rule);
+    background:linear-gradient(90deg,var(--card-hi),var(--on))}
+  input[type=range]::-moz-range-thumb{width:10px;height:32px;border:none;border-radius:5px;background:#fff}
+  .swatches{display:grid;grid-template-columns:repeat(7,1fr);gap:9px;align-items:center}
+  .sw{aspect-ratio:1;border-radius:50%;border:none;cursor:pointer;padding:0;transition:transform .12s,box-shadow .12s}
+  .sw:active{transform:scale(.88)}
+  .sw.sel{box-shadow:0 0 0 2px var(--card),0 0 0 4px var(--ink)}
+  .sw.custom{position:relative;overflow:hidden;
+    background:conic-gradient(#ff5f5f,#f5c46b,#8ede8e,#6bc7f5,#a98ef0,#ff8ed4,#ff5f5f)}
+  .sw.custom input{position:absolute;inset:-20%;width:140%;height:140%;opacity:0;cursor:pointer;border:none;padding:0}
+  .chips{display:flex;gap:8px;flex-wrap:wrap}
+  .chip{flex:1 1 0;min-width:70px;padding:11px 8px;border-radius:13px;background:var(--card-hi);
+    border:1px solid var(--rule);color:var(--ink-soft);font-size:13px;font-weight:600;
+    cursor:pointer;transition:all .15s;font-family:inherit}
+  .chip.sel{background:var(--on);border-color:var(--on);color:#1a1408}
+  .done{width:100%;margin-top:18px;padding:14px;border-radius:15px;background:var(--card-hi);
+    border:1px solid var(--rule);color:var(--ink);font-size:15px;font-weight:650;cursor:pointer;font-family:inherit}
+
+  /* ── settings: presence ─────────────────────────────────── */
+  .verdict{padding:16px;text-align:center;border:1px solid var(--rule);border-radius:16px;background:var(--card-hi)}
+  .verdict .big{font-size:26px;font-weight:700;letter-spacing:-.02em}
+  .verdict .why{font-size:12.5px;color:var(--ink-soft);margin-top:2px}
+  .verdict.present .big{color:var(--live)}
+  .verdict.unsure .big{color:var(--on)}
+  .board{padding:13px 14px;border:1px solid var(--rule);border-radius:16px;background:var(--card-hi);margin-top:9px}
+  .board .head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;gap:8px}
+  .board .who{font-size:13.5px;font-weight:650}
+  .board .st{font-size:11.5px;color:var(--ink-faint)}
+  .meter{height:9px;border-radius:5px;background:var(--card);position:relative;overflow:hidden;border:1px solid var(--rule)}
+  .meter i{position:absolute;inset:0 auto 0 0;background:var(--cool);border-radius:5px;transition:width .3s}
+  .meter.hot i{background:var(--live)}
+  .meter b{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--ink);opacity:.55}
+  .board .nums{display:flex;justify-content:space-between;font-size:11px;color:var(--ink-faint);margin-top:6px;font-variant-numeric:tabular-nums;gap:8px}
+  .kv{display:flex;justify-content:space-between;gap:12px;font-size:12.5px;padding:9px 0;border-bottom:1px solid var(--rule)}
+  .kv:last-child{border-bottom:none}
+  .kv .k{color:var(--ink-soft)}
+  .kv .v{color:var(--ink);font-weight:600;text-align:right;word-break:break-all;font-variant-numeric:tabular-nums}
+  .ghost{width:100%;margin-top:10px;padding:12px;border-radius:13px;background:transparent;
+    border:1px solid var(--rule);color:var(--ink-soft);font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit}
+  .ghost:active{color:var(--ink);background:var(--card-hi)}
+
+  .banner{background:var(--card);border:1px dashed var(--rule);border-radius:14px;
+    padding:10px 14px;font-size:12.5px;color:var(--ink-soft);margin-bottom:10px;flex:0 0 auto}
+
+
+  /* ── layout switch ──────────────────────────────────────────
+     Driven by a data-layout attribute JS sets from matchMedia, not by
+     bare media queries, because the 7" panel (800x480 landscape) and a
+     phone in landscape (844x390) overlap badly on width alone. Keeping
+     the decision in one place also makes ?layout=mobile testable. */
+  #view-mobile{display:none}
+  body[data-layout="mobile"] #view-home,
+  body[data-layout="mobile"] #view-controls{display:none!important}
+  body[data-layout="mobile"] #view-mobile{display:flex}
+  body[data-layout="mobile"] #back{display:none!important}
+  body[data-layout="mobile"] h1{font-size:18px}
+  body[data-layout="mobile"] #statusText{display:none}
+  body[data-layout="mobile"] #status{padding:7px 9px}
+
+  .m-head{
+    flex:0 0 auto;display:flex;align-items:baseline;justify-content:space-between;
+    gap:12px;padding:12px 16px;
+  }
+  .m-time{
+    font-size:34px;font-weight:300;letter-spacing:-.03em;line-height:1;
+    font-variant-numeric:tabular-nums;display:flex;align-items:baseline;gap:.12em;
+  }
+  .m-time .ampm{font-size:.42em;font-weight:600;color:var(--ink-soft)}
+  .m-env{display:flex;align-items:baseline;gap:10px}
+  .m-e{display:flex;align-items:baseline;font-variant-numeric:tabular-nums}
+  .m-e b{font-size:20px;font-weight:650;letter-spacing:-.02em;color:var(--on)}
+  .m-e i{font-size:11px;font-style:normal;font-weight:600;color:var(--ink-soft);margin-left:1px}
+  .m-sep{width:3px;height:3px;border-radius:50%;background:var(--ink-faint);align-self:center}
+
+  /* Two columns, two rows, filling whatever is left. The tiles grow
+     with the screen instead of a fixed height, which is what keeps
+     this to one screen on everything from an SE to a Pro Max. */
+  .m-grid{
+    flex:1 1 auto;min-height:0;display:grid;
+    grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:var(--gap);
+    max-height:min(560px, 100%);align-self:center;width:100%;
+  }
+  .m-tile{
+    position:relative;display:flex;flex-direction:column;gap:12px;padding:16px;
+    min-height:0;cursor:pointer;text-align:left;justify-content:center;
+    transition:background .18s,border-color .18s,box-shadow .18s,transform .1s;
+  }
+  .m-tile:active{transform:scale(.97)}
+  .m-tile.on{background:var(--card-hi);border-color:var(--on);box-shadow:0 0 0 4px var(--on-glow)}
+  .m-tile .icon{color:var(--ink-faint);transition:color .18s}
+  .m-tile .icon svg{width:32px;height:32px;display:block}
+  .m-tile.on .icon{color:var(--on)}
+  .m-tile .meta{min-width:0}
+  .m-tile .name{font-size:15px;font-weight:650;letter-spacing:-.01em}
+  .m-tile .sub{font-size:12.5px;color:var(--ink-soft);margin-top:1px}
+  .m-tile.stale{opacity:.45}
+  .m-tile .adjust{top:9px;right:9px;width:34px;height:34px}
+  .m-tile .adjust svg{width:17px;height:17px}
+  body[data-layout="mobile"] .allof{margin-top:0;flex:0 0 auto;padding:15px}
+
+  /* ── the 7" panel: 800x480 landscape, must never scroll ─── */
+  @media (orientation:landscape) and (max-height:620px){
+    :root{--pad:12px;--tile-h:84px;--gap:9px}
+    body{max-width:none;padding-top:6px;padding-bottom:8px}
+    header{margin-bottom:5px}
+    h1{font-size:18px}
+    #gear{width:34px;height:34px}
+    .clock{flex:1 1 auto;padding:8px 16px}
+    .clock .t{font-size:clamp(104px,31vh,156px)}
+    .clock .d .dow{font-size:30px}
+    .clock .d .dmy{font-size:24px}
+    /* Four across, centred in the space, sized for fingers rather
+       than stretched to the full height — a 360px-tall tile is just
+       a lot of empty card. */
+    :root{--tile-h:150px}
+    #view-controls{justify-content:center}
+    #view-controls .grid{flex:0 0 auto;grid-template-rows:var(--tile-h)}
+    #view-controls .tile .icon svg{width:27px;height:27px}
+    #view-controls .tile .name{font-size:15.5px}
+    .duo .card{padding:11px 13px 10px}
+    .rd .v{font-size:25px}
+    .bigbtn{padding:15px;font-size:17px}
+    .grid{grid-template-columns:repeat(4,1fr)}
+    .tile{padding:11px}
+    .verdict{padding:12px}
+  }
+  /* Very short landscape — the 7" panel at 800x480 lands here. Only the
+     footnotes go; the clock stays large, since reading the time across
+     the room is the whole point of the thing. */
+  @media (orientation:landscape) and (max-height:500px){
+    .clock .t{font-size:clamp(96px,28vh,140px)}
+    .foot{display:none}
+  }
+</style>
+</head>
+<body data-view="home">
+
+<header>
+  <div class="crumb">
+    <button id="back" aria-label="Back">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+    <h1 id="title">Annie’s Dorm</h1>
+  </div>
+  <div class="topright">
+    <span id="status"><span id="dot" class="wait"></span><span id="statusText">connecting</span></span>
+    <button id="bulb" aria-label="Switch light or dark mode" title="Light / dark mode">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 18h6"/><path d="M10 21.5h4"/>
+        <path d="M12 2.5a6.5 6.5 0 0 0-3.8 11.8c.5.4.8 1 .8 1.6V18h6v-2.1c0-.6.3-1.2.8-1.6A6.5 6.5 0 0 0 12 2.5Z"/>
+      </svg>
+    </button>
+    <button id="gear" aria-label="Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3.1"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    </button>
+  </div>
+</header>
+
+<div id="banner" class="banner" hidden></div>
+
+<!-- ══ HOME ════════════════════════════════════════════════ -->
+<div class="view" id="view-home">
+
+  <div class="card clock">
+    <div class="t"><span id="clockTime" data-bind="time">--:--</span><span class="ampm" id="clockAmPm" data-bind="ampm"></span></div>
+    <div class="d">
+      <span class="dow" id="clockDow" data-bind="dow">&nbsp;</span>
+      <span class="dmy" id="clockDate" data-bind="date">&nbsp;</span>
+    </div>
+  </div>
+
+  <div class="duo">
+    <div class="card">
+      <div class="label">Temperature</div>
+      <div class="rowpair">
+        <div class="rd indoor">
+          <span class="k">Indoor</span>
+          <span class="v"><span id="inTemp" data-bind="inTemp">—</span><span class="u" id="tUnitA" data-bind="tunit">°F</span></span>
+        </div>
+        <div class="rd outdoor">
+          <span class="k">Outdoor</span>
+          <span class="v"><span id="outTemp" data-bind="outTemp">—</span><span class="u" id="tUnitB" data-bind="tunit">°F</span></span>
+        </div>
+      </div>
+      <div class="foot" id="tempFoot">waiting for sensor</div>
+    </div>
+
+    <div class="card">
+      <div class="label">Humidity</div>
+      <div class="rowpair">
+        <div class="rd indoor">
+          <span class="k">Indoor</span>
+          <span class="v"><span id="inHum" data-bind="inHum">—</span><span class="u">%</span></span>
+        </div>
+        <div class="rd outdoor">
+          <span class="k">Outdoor</span>
+          <span class="v"><span id="outHum" data-bind="outHum">—</span><span class="u">%</span></span>
+        </div>
+      </div>
+      <div class="foot" id="humFoot">&nbsp;</div>
+    </div>
+  </div>
+
+  <button class="bigbtn" id="toControls">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+      <path d="M4 8h10M18 8h2M4 16h4M12 16h8"/><circle cx="16" cy="8" r="2.1"/><circle cx="10" cy="16" r="2.1"/>
+    </svg>
+    Controls<span class="count" id="onCount"></span>
+  </button>
+</div>
+
+<!-- ══ CONTROLS ════════════════════════════════════════════ -->
+<div class="view" id="view-controls" hidden>
+  <div class="grid">
+
+    <div class="card tile" role="button" tabindex="0" id="stripTile" data-tile="strip">
+      <div class="icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 15 q3-6 6 0 t6 0 t6 0"/><path d="M3 19.5 h18"/>
+        </svg>
+      </div>
+      <button class="adjust" data-for="strip" aria-label="LED strip settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+          <path d="M4 8h10M18 8h2M4 16h4M12 16h8"/><circle cx="16" cy="8" r="2.1"/><circle cx="10" cy="16" r="2.1"/>
+        </svg>
+      </button>
+      <div class="meta"><div class="name">LED Strip</div><div class="sub" id="stripSub" data-bind="stripSub">off</div></div>
+    </div>
+
+    <div class="card tile" role="button" tabindex="0" id="fairyTile" data-tile="fairy">
+      <div class="icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2 6 q4 5 8 0 t8 0 q2 2.5 4 0"/>
+          <circle cx="5" cy="10.5" r="1.3"/><circle cx="11" cy="11.5" r="1.3"/>
+          <circle cx="17" cy="10.5" r="1.3"/><circle cx="22" cy="9" r="1.3"/>
+        </svg>
+      </div>
+      <button class="adjust" data-for="fairy" aria-label="Fairy light settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+          <path d="M4 8h10M18 8h2M4 16h4M12 16h8"/><circle cx="16" cy="8" r="2.1"/><circle cx="10" cy="16" r="2.1"/>
+        </svg>
+      </button>
+      <div class="meta"><div class="name">Fairy Lights</div><div class="sub" id="fairySub" data-bind="fairySub">off</div></div>
+    </div>
+
+    <div class="card tile" role="button" tabindex="0" id="lampTile" data-tile="lamp">
+      <div class="icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3 L5.5 12.5 h13 Z"/><path d="M12 12.5 V19"/><path d="M8.5 19 h7"/>
+        </svg>
+      </div>
+      <button class="adjust" data-for="lamp" aria-label="Lamp settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+          <path d="M4 8h10M18 8h2M4 16h4M12 16h8"/><circle cx="16" cy="8" r="2.1"/><circle cx="10" cy="16" r="2.1"/>
+        </svg>
+      </button>
+      <div class="meta"><div class="name">Lamp</div><div class="sub" id="lampSub" data-bind="lampSub">off</div></div>
+    </div>
+
+    <div class="card tile" role="button" tabindex="0" id="deskTile" data-tile="desk">
+      <div class="icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 20 h7"/><path d="M7.5 20 V13"/><path d="M7.5 13 L15 6.5"/><path d="M12.6 3.4 l4.6 4.6 -2.6 2.6 -4.6 -4.6 Z"/>
+        </svg>
+      </div>
+      <button class="adjust" data-for="desk" aria-label="Desk light settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+          <path d="M4 8h10M18 8h2M4 16h4M12 16h8"/><circle cx="16" cy="8" r="2.1"/><circle cx="10" cy="16" r="2.1"/>
+        </svg>
+      </button>
+      <div class="meta"><div class="name">Desk Light</div><div class="sub" id="deskSub" data-bind="deskSub">off</div></div>
+    </div>
+
+  </div>
+  <button class="allof" id="allOff">Everything off</button>
+</div>
+
+
+<!-- ══ MOBILE ══════════════════════════════════════════════ -->
+<!-- A phone is used standing in a doorway with one thumb, so this
+     drops everything that is not a light: no outdoor readings, no
+     weekday, no presence meters. Four big targets, one screen, no
+     scroll. Everything here shares state with the full layout — the
+     data-bind / data-tile attributes are read by the same render
+     functions, so there is no second copy of the logic to keep in
+     step. -->
+<div class="view" id="view-mobile">
+  <div class="card m-head">
+    <div class="m-time"><span data-bind="time">--:--</span><span class="ampm" data-bind="ampm"></span></div>
+    <div class="m-env">
+      <span class="m-e indoor"><b data-bind="inTemp">—</b><i data-bind="tunit">°F</i></span>
+      <span class="m-sep"></span>
+      <span class="m-e indoor"><b data-bind="inHum">—</b><i>%</i></span>
+    </div>
+  </div>
+
+  <div class="m-grid">
+      <div class="card m-tile" role="button" tabindex="0" data-tile="strip">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15 q3-6 6 0 t6 0 t6 0"/><path d="M3 19.5 h18"/></svg></div>
+        <button class="adjust" data-for="strip" aria-label="LED Strip settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 8h10M18 8h2M4 16h4M12 16h8"/><circle cx="16" cy="8" r="2.1"/><circle cx="10" cy="16" r="2.1"/></svg></button>
+        <div class="meta"><div class="name">LED Strip</div><div class="sub" data-bind="stripSub">off</div></div>
+      </div>
+      <div class="card m-tile" role="button" tabindex="0" data-tile="fairy">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6 q4 5 8 0 t8 0 q2 2.5 4 0"/><circle cx="5" cy="10.5" r="1.3"/><circle cx="11" cy="11.5" r="1.3"/><circle cx="17" cy="10.5" r="1.3"/><circle cx="22" cy="9" r="1.3"/></svg></div>
+        <button class="adjust" data-for="fairy" aria-label="Fairy Lights settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 8h10M18 8h2M4 16h4M12 16h8"/><circle cx="16" cy="8" r="2.1"/><circle cx="10" cy="16" r="2.1"/></svg></button>
+        <div class="meta"><div class="name">Fairy Lights</div><div class="sub" data-bind="fairySub">off</div></div>
+      </div>
+      <div class="card m-tile" role="button" tabindex="0" data-tile="lamp">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 L5.5 12.5 h13 Z"/><path d="M12 12.5 V19"/><path d="M8.5 19 h7"/></svg></div>
+        
+        <div class="meta"><div class="name">Lamp</div><div class="sub" data-bind="lampSub">off</div></div>
+      </div>
+      <div class="card m-tile" role="button" tabindex="0" data-tile="desk">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20 h7"/><path d="M7.5 20 V13"/><path d="M7.5 13 L15 6.5"/><path d="M12.6 3.4 l4.6 4.6 -2.6 2.6 -4.6 -4.6 Z"/></svg></div>
+        
+        <div class="meta"><div class="name">Desk Light</div><div class="sub" data-bind="deskSub">off</div></div>
+      </div>
+  </div>
+
+  <button class="allof" id="mAllOff">Everything off</button>
+</div>
+
+<!-- ══ SHEETS ══════════════════════════════════════════════ -->
+<div id="scrim"></div>
+
+<div id="sheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+  <div class="grabber"></div>
+  <div class="sheet-head">
+    <div><div class="sheet-title" id="sheetTitle">Light</div>
+         <div class="sheet-sub" id="sheetSub">off</div></div>
+    <button class="switch" id="sheetSwitch" aria-label="Toggle"></button>
+  </div>
+  <label class="field" for="sheetBright">Brightness</label>
+  <input type="range" id="sheetBright" min="1" max="255" value="180">
+  <div id="colourBlock">
+    <label class="field">Colour</label>
+    <div class="swatches" id="swatches">
+      <button class="sw" data-c="#ffb46b" style="background:#ffb46b"></button>
+      <button class="sw" data-c="#ffffff" style="background:#ffffff"></button>
+      <button class="sw" data-c="#ff5f5f" style="background:#ff5f5f"></button>
+      <button class="sw" data-c="#8ede8e" style="background:#8ede8e"></button>
+      <button class="sw" data-c="#6bc7f5" style="background:#6bc7f5"></button>
+      <button class="sw" data-c="#a98ef0" style="background:#a98ef0"></button>
+      <button class="sw custom" id="customSw"><input type="color" id="picker" value="#ffb46b"></button>
+    </div>
+    <label class="field">Effect</label>
+    <div class="chips" id="effects">
+      <button class="chip" data-e="solid">Solid</button>
+      <button class="chip" data-e="rainbow">Rainbow</button>
+      <button class="chip" data-e="breathe">Breathe</button>
+      <button class="chip" data-e="candle">Candle</button>
+    </div>
+  </div>
+  <div id="fairyBlock" hidden>
+    <label class="field">Groups</label>
+    <div class="chips" id="fairyModes">
+      <button class="chip" data-m="both">Both</button>
+      <button class="chip" data-m="a">Group A</button>
+      <button class="chip" data-m="b">Group B</button>
+    </div>
+  </div>
+  <button class="done" id="sheetDone">Done</button>
+</div>
+
+<div id="settings" class="sheet" role="dialog" aria-modal="true" aria-labelledby="setTitle">
+  <div class="grabber"></div>
+  <div class="sheet-head">
+    <div><div class="sheet-title" id="setTitle">Settings</div>
+         <div class="sheet-sub">Presence &amp; system</div></div>
+  </div>
+
+  <label class="field">Presence</label>
+  <div class="verdict" id="verdict">
+    <div class="big" id="verdictBig">—</div>
+    <div class="why" id="verdictWhy">waiting for both boards</div>
+  </div>
+
+  <div class="board" id="board-esp0">
+    <div class="head"><span class="who">ESP0 · strip &amp; lamp</span><span class="st" id="esp0St">—</span></div>
+    <div class="meter" id="esp0Meter"><i style="width:0"></i><b style="left:0"></b></div>
+    <div class="nums"><span id="esp0Score">score —</span><span id="esp0Rssi">—</span></div>
+  </div>
+  <div class="board" id="board-esp1">
+    <div class="head"><span class="who">ESP1 · fairy, desk &amp; sensor</span><span class="st" id="esp1St">—</span></div>
+    <div class="meter" id="esp1Meter"><i style="width:0"></i><b style="left:0"></b></div>
+    <div class="nums"><span id="esp1Score">score —</span><span id="esp1Rssi">—</span></div>
+  </div>
+
+  <label class="field">Display</label>
+  <div class="chips" id="unitChips">
+    <button class="chip" data-unit="F">Fahrenheit</button>
+    <button class="chip" data-unit="C">Celsius</button>
+  </div>
+
+  <label class="field">System</label>
+  <div class="kv"><span class="k">Broker</span><span class="v" id="kvBroker">—</span></div>
+  <div class="kv"><span class="k">Transport</span><span class="v" id="kvTransport">—</span></div>
+  <div class="kv"><span class="k">Signed in as</span><span class="v" id="kvUser">—</span></div>
+  <div class="kv"><span class="k">ESP0</span><span class="v" id="kvEsp0">—</span></div>
+  <div class="kv"><span class="k">ESP1</span><span class="v" id="kvEsp1">—</span></div>
+  <div class="kv"><span class="k">Outdoor data</span><span class="v" id="kvWeather">—</span></div>
+
+  <button class="ghost" id="recalBtn">Recalibrate presence sensors</button>
+  <button class="ghost" id="reloadBtn">Reload interface</button>
+  <button class="done" id="setDone">Done</button>
+</div>
+
+<script src="mqtt.min.js"></script>
+<script>
+"use strict";
+/* ═══════════════════════════════════════════════════════════
+   CONFIG — no secrets are baked into this file.
+
+   The page asks its own origin for /config.json. On the Pi that
+   file is served by nginx *behind Cloudflare Access*, so only an
+   authenticated session ever receives the broker credentials.
+   Anywhere else (GitHub Pages, a local file://) the fetch fails
+   and the page falls back to demo mode with the controls live
+   but purely local.
+   ═══════════════════════════════════════════════════════════ */
+const ROOM_NAME = "Annie’s Dorm";   // header + tab title
+
+/* ═══════════════════════════════════════════════════════════
+   PUBLIC BROKER — read this before filling it in.
+
+   These credentials are visible to everyone who opens this page.
+   That is not a bug in the deployment, it is what a static page IS:
+   there is no server here to keep a secret. Anyone who views source
+   can control every light, and on HiveMQ's free Serverless tier the
+   credential cannot be restricted to a topic, so it is the whole
+   cluster.
+
+   Fill this in ONLY with a credential created for exactly this job,
+   used nowhere else. Not the one the ESP32s use, not the one the Pi's
+   bridge uses. Then, if it is ever abused, you delete this one
+   credential and the boards keep working while this page drops to
+   demo mode on its own.
+
+   Leave host/username empty and the page stays in demo mode.
+
+   Precedence: config.json (served by the Pi, behind Cloudflare
+   Access) wins when present. This is the fallback for the GitHub
+   Pages copy.
+   ═══════════════════════════════════════════════════════════ */
+const PUBLIC_BROKER = {
+  host:     "e3a13c7fbd494724aa73555c0a8566b9.s1.eu.hivemq.cloud",
+  port:     8884,          // HiveMQ Cloud WebSocket-over-TLS port
+  path:     "/mqtt",
+  username: "webpublic",            // e.g. "webpublic"
+  password: "yPgQ6XxF1G0qWPy",
+};
+
+function publicBrokerConfig(){
+  if(!PUBLIC_BROKER.host || !PUBLIC_BROKER.username) return null;
+  return {
+    url: `wss://${PUBLIC_BROKER.host}:${PUBLIC_BROKER.port}${PUBLIC_BROKER.path}`,
+    username: PUBLIC_BROKER.username,
+    password: PUBLIC_BROKER.password,
+  };
+}
+const BASE = "hsn";
+
+const T = {
+  strip: { set:`${BASE}/strip/set`, state:`${BASE}/strip/state` },
+  fairy: { set:`${BASE}/fairy/set`, state:`${BASE}/fairy/state` },
+  lamp:  { set:`${BASE}/lamp/set`,  state:`${BASE}/lamp/state`  },
+  desk:  { set:`${BASE}/desk/set`,  state:`${BASE}/desk/state`  },
+  indoor:   `${BASE}/sensor/indoor`,
+  outdoor:  `${BASE}/sensor/outdoor`,
+  presence: `${BASE}/presence/+`,
+  avail:    `${BASE}/+/available`,
+  info:     `${BASE}/+/info`,
+  cmd:      `${BASE}/cmd`,
+};
+/* Which board owns which light — drives the "offline" dimming. */
+const BOARDS = { esp0:["strip","lamp"], esp1:["fairy","desk"] };
+
+const el = id => document.getElementById(id);
+// Both layouts carry the same data-bind names, so one call updates
+// whichever is on screen (and the other, harmlessly).
+const setAll = (name, text) =>
+  document.querySelectorAll(`[data-bind="${name}"]`).forEach(n => { n.textContent = text; });
+const $$ = sel => Array.from(document.querySelectorAll(sel));
+
+const state = {
+  strip:{on:false,alive:false,brightness:180,color:"#ffb46b",effect:"solid"},
+  fairy:{on:false,alive:false,brightness:200,mode:"both"},
+  lamp: {on:false,alive:false,brightness:255},
+  desk: {on:false,alive:false,brightness:255},
+};
+const LABEL = { strip:"LED Strip", fairy:"Fairy Lights", lamp:"Lamp", desk:"Desk Light" };
+const HAS_COLOUR = { strip:true };
+const HAS_GROUPS = { fairy:true };
+
+const indoor  = { tempC:null, hum:null, at:0 };
+const outdoor = { tempC:null, hum:null, desc:"", at:0 };
+const presence = { esp0:null, esp1:null };
+const online   = { esp0:null, esp1:null };
+const boardInfo= { esp0:null, esp1:null };   // ip, broker path, ssid, rssi
+
+let client = null, sheetFor = null, DEMO = true, CFG = null;
+let unit = localStorage.getItem("room.unit") || "F";
+
+/* ── helpers ──────────────────────────────────────────────── */
+const hexToRgb = h => { const n=parseInt(h.slice(1),16); return {r:(n>>16)&255,g:(n>>8)&255,b:n&255}; };
+const rgbToHex = ({r,g,b}) => "#"+[r,g,b].map(v=>Math.max(0,Math.min(255,v|0)).toString(16).padStart(2,"0")).join("");
+const pct = v => Math.round(v/255*100);
+const show = (c) => unit==="C" ? c : c*9/5+32;
+function agoText(ms, what){
+  if(!ms) return `waiting for ${what}`;
+  const s=Math.round((Date.now()-ms)/1000);
+  if(s<5)  return "just now";
+  if(s<90) return `updated ${s}s ago`;
+  const m=Math.round(s/60);
+  return m<90 ? `updated ${m}m ago` : `${what} stale`;
+}
+
+/* ── clock ────────────────────────────────────────────────── */
+function tickClock(){
+  const d = new Date();
+  let h = d.getHours(); const m = String(d.getMinutes()).padStart(2,"0");
+  const ampm = h>=12 ? "PM" : "AM";
+  h = h%12 || 12;
+  setAll("time",  `${h}:${m}`);
+  setAll("ampm",  ampm);
+  setAll("dow",   d.toLocaleDateString(undefined, {weekday:"long"}));
+  setAll("date",  d.toLocaleDateString(undefined, {day:"numeric", month:"long"}));
+}
+
+/* ── render ───────────────────────────────────────────────── */
+function renderEnv(){
+  const f = v => v==null ? "—" : show(v).toFixed(1);
+  setAll("inTemp",  f(indoor.tempC));
+  setAll("outTemp", f(outdoor.tempC));
+  setAll("inHum",   indoor.hum==null  ? "—" : String(Math.round(indoor.hum)));
+  setAll("outHum",  outdoor.hum==null ? "—" : String(Math.round(outdoor.hum)));
+  setAll("tunit",   unit==="C" ? "°C" : "°F");
+  el("tempFoot").textContent = agoText(indoor.at, "sensor");
+  el("humFoot").textContent  = outdoor.desc || agoText(outdoor.at, "weather");
+}
+
+function renderDevices(){
+  for(const k of ["strip","fairy","lamp","desk"]){
+    const s = state[k];
+    document.querySelectorAll(`[data-tile="${k}"]`).forEach(tile=>{
+      tile.classList.toggle("on", s.on && s.alive!==false);
+      tile.classList.toggle("stale", !s.alive);
+    });
+    let sub;
+    if(!s.alive)         sub = "offline";
+    else if(!s.on)       sub = "off";
+    else if(k==="strip") sub = `${pct(s.brightness)}% · ${s.effect}`;
+    else                 sub = `${pct(s.brightness)}%`;
+    setAll(k+"Sub", sub);
+  }
+  const n = ["strip","fairy","lamp","desk"].filter(k=>state[k].on && state[k].alive).length;
+  el("onCount").textContent = n ? `· ${n} on` : "";
+  if(sheetFor) renderSheet();
+}
+
+function renderPresence(){
+  for(const id of ["esp0","esp1"]){
+    const p = presence[id], card = el("board-"+id);
+    card.classList.toggle("stale", !p);
+    if(!p){ el(id+"St").textContent="no data"; continue; }
+    el(id+"St").textContent = p.present ? "occupied" : p.status;
+    const ceil  = Math.max(p.threshold*2, p.score*1.2, 0.001);
+    const meter = el(id+"Meter");
+    meter.classList.toggle("hot", !!p.present);
+    meter.querySelector("i").style.width = Math.min(100, p.score/ceil*100)+"%";
+    meter.querySelector("b").style.left  = Math.min(100, p.threshold/ceil*100)+"%";
+    el(id+"Score").textContent = `score ${p.score.toFixed(4)} · thr ${p.threshold.toFixed(4)}`;
+    el(id+"Rssi").textContent  = `${p.rssi} dBm · ${p.fps.toFixed(0)} fps`;
+  }
+  const a=presence.esp0, b=presence.esp1;
+  const v=el("verdict"), big=el("verdictBig"), why=el("verdictWhy");
+  v.classList.remove("present","unsure");
+  if(!a||!b){ big.textContent="—"; why.textContent="waiting for both boards"; return; }
+  if(a.present && b.present){ v.classList.add("present"); big.textContent="Occupied"; why.textContent="both boards agree"; }
+  else if(!a.present && !b.present){ big.textContent="Empty"; why.textContent="both boards agree"; }
+  else { v.classList.add("unsure"); big.textContent="Uncertain";
+         why.textContent = `only ${a.present?"ESP0":"ESP1"} sees movement`; }
+}
+
+function renderSystem(){
+  // Which network each board actually landed on. On a campus with
+  // several APs and an IoT VLAN this is the first thing worth seeing.
+  for(const b of ["esp0","esp1"]){
+    const up = online[b], i = boardInfo[b];
+    let txt;
+    if(up==null)     txt = "—";
+    else if(!up)     txt = "offline";
+    else if(!i)      txt = "online";
+    else             txt = `online · via ${i.broker} · ${i.ip}`;
+    if(up && i && i.rssi!=null) txt += ` · ${i.rssi} dBm`;
+    el("kv"+b.replace("esp","Esp")).textContent = txt;
+  }
+  el("kvWeather").textContent = outdoor.at ? agoText(outdoor.at,"weather") : "—";
+  $$("#unitChips .chip").forEach(c=>c.classList.toggle("sel", c.dataset.unit===unit));
+}
+
+function renderSheet(){
+  const s = state[sheetFor];
+  el("sheetTitle").textContent = LABEL[sheetFor];
+  el("sheetSub").textContent = !s.alive ? "offline" : (s.on ? `${pct(s.brightness)}%` : "off");
+  el("sheetSwitch").classList.toggle("on", s.on);
+  el("sheetBright").value = s.brightness;
+  el("colourBlock").hidden = !HAS_COLOUR[sheetFor];
+  el("fairyBlock").hidden  = !HAS_GROUPS[sheetFor];
+  if(HAS_COLOUR[sheetFor]){
+    el("picker").value = s.color;
+    $$("#swatches .sw[data-c]").forEach(b=>
+      b.classList.toggle("sel", b.dataset.c.toLowerCase()===s.color.toLowerCase()));
+    $$("#effects .chip").forEach(b=> b.classList.toggle("sel", b.dataset.e===s.effect));
+  }
+  if(HAS_GROUPS[sheetFor])
+    $$("#fairyModes .chip").forEach(b=> b.classList.toggle("sel", b.dataset.m===s.mode));
+}
+
+const setStatus = (k,t) => { el("dot").className=k; el("statusText").textContent=t; };
+
+/* ── publish ──────────────────────────────────────────────── */
+function publish(key, patch){
+  Object.assign(state[key], patch);
+  renderDevices();
+  if(DEMO || !client || !client.connected) return;
+  const s = state[key];
+  const msg = { state: s.on ? "ON" : "OFF", brightness: s.brightness };
+  if(HAS_COLOUR[key]){ msg.color = hexToRgb(s.color); msg.effect = s.effect; }
+  if(HAS_GROUPS[key]){ msg.mode = s.mode; }
+  client.publish(T[key].set, JSON.stringify(msg), {qos:1});
+}
+
+/* ── views ────────────────────────────────────────────────── */
+function goto(view){
+  document.body.dataset.view = view;
+  el("view-home").hidden     = view!=="home";
+  el("view-controls").hidden = view!=="controls";
+  el("title").textContent    = view==="home" ? ROOM_NAME : "Controls";
+}
+el("toControls").onclick = ()=>goto("controls");
+el("back").onclick       = ()=>goto("home");
+
+/* ── sheets ───────────────────────────────────────────────── */
+function openSheet(w){ sheetFor=w; renderSheet(); el("scrim").classList.add("open"); el("sheet").classList.add("open"); }
+function openSettings(){ renderSystem(); renderPresence(); el("scrim").classList.add("open"); el("settings").classList.add("open"); }
+function closeAll(){
+  sheetFor=null;
+  el("scrim").classList.remove("open");
+  el("sheet").classList.remove("open");
+  el("settings").classList.remove("open");
+}
+el("scrim").onclick    = closeAll;
+el("sheetDone").onclick= closeAll;
+el("setDone").onclick  = closeAll;
+el("gear").onclick     = openSettings;
+document.addEventListener("keydown", e=>{ if(e.key==="Escape") closeAll(); });
+
+el("sheetSwitch").onclick = ()=> sheetFor && publish(sheetFor, {on:!state[sheetFor].on});
+
+let sheetTimer=null;
+el("sheetBright").oninput = e=>{
+  if(!sheetFor) return;
+  const s = state[sheetFor];
+  s.brightness = +e.target.value; s.on = true;
+  el("sheetSub").textContent = `${pct(s.brightness)}%`;
+  clearTimeout(sheetTimer);
+  sheetTimer = setTimeout(()=>publish(sheetFor,{}), 90);   // throttle the stream
+};
+el("swatches").onclick = e=>{
+  const b = e.target.closest(".sw[data-c]");
+  if(b && sheetFor) publish(sheetFor, {color:b.dataset.c, on:true,
+    effect: state[sheetFor].effect==="rainbow" ? "solid" : state[sheetFor].effect});
+};
+el("picker").oninput  = e=> sheetFor && publish(sheetFor, {color:e.target.value, on:true});
+el("effects").onclick = e=>{ const b=e.target.closest(".chip"); if(b&&sheetFor) publish(sheetFor,{effect:b.dataset.e, on:true}); };
+el("fairyModes").onclick = e=>{ const b=e.target.closest(".chip"); if(b&&sheetFor) publish(sheetFor,{mode:b.dataset.m, on:true}); };
+
+/* ── tiles: tap toggles, long-press or gear opens the sheet ─ */
+function wireTile(key){
+  document.querySelectorAll(`[data-tile="${key}"]`).forEach(tile => wireOneTile(tile, key));
+}
+function wireOneTile(tile, key){
+  let held=false, timer=null;
+  tile.addEventListener("pointerdown", ()=>{ held=false;
+    timer = setTimeout(()=>{ held=true; openSheet(key); }, 450); });
+  ["pointerup","pointerleave","pointercancel"].forEach(ev =>
+    tile.addEventListener(ev, ()=>clearTimeout(timer)));
+  tile.addEventListener("click", e=>{
+    if(e.target.closest(".adjust")){ openSheet(key); return; }
+    if(held){ held=false; return; }
+    publish(key, {on: !state[key].on});
+  });
+  tile.addEventListener("keydown", e=>{
+    if(e.key==="Enter"||e.key===" "){ e.preventDefault(); publish(key,{on:!state[key].on}); }
+  });
+}
+["strip","fairy","lamp","desk"].forEach(wireTile);
+
+const allOff = ()=> ["strip","fairy","lamp","desk"].forEach(k=>publish(k,{on:false}));
+el("allOff").onclick  = allOff;
+el("mAllOff").onclick = allOff;
+
+el("unitChips").onclick = e=>{
+  const b = e.target.closest(".chip"); if(!b) return;
+  unit = b.dataset.unit;
+  try{ localStorage.setItem("room.unit", unit); }catch(_){}
+  renderEnv(); renderSystem();
+};
+el("recalBtn").onclick = ()=>{
+  if(!DEMO && client && client.connected){
+    client.publish(T.cmd, JSON.stringify({action:"recalibrate"}), {qos:1});
+    el("recalBtn").textContent = "Recalibrating — stay still ~20s";
+    setTimeout(()=>el("recalBtn").textContent="Recalibrate presence sensors", 20000);
+  }
+};
+el("reloadBtn").onclick = ()=>location.reload();
+
+
+/* ── theme ────────────────────────────────────────────────── */
+/* Three states, not two: "light", "dark", or no stored choice at all,
+   which means follow the device. The bulb only ever writes light/dark,
+   but a page that has never been touched still tracks the system. */
+const THEME_KEY = "room.theme";
+
+const systemDark = () => window.matchMedia("(prefers-color-scheme: dark)").matches;
+const isDark = () => {
+  const t = document.documentElement.dataset.theme;
+  return t ? t === "dark" : systemDark();
+};
+
+function applyTheme(t){
+  if(t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+  else delete document.documentElement.dataset.theme;
+  const dark = isDark();
+  el("bulb").classList.toggle("lit", dark);
+  el("bulb").setAttribute("aria-label", dark ? "Switch to light mode" : "Switch to dark mode");
+  // Keeps the iOS status bar and Android chrome in step with the page.
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if(meta) meta.content = dark ? "#0e0e11" : "#f4f2ee";
+}
+
+el("bulb").onclick = ()=>{
+  const next = isDark() ? "light" : "dark";
+  try{ localStorage.setItem(THEME_KEY, next); }catch(_){}
+  applyTheme(next);
+};
+
+let savedTheme = null;
+try{ savedTheme = localStorage.getItem(THEME_KEY); }catch(_){}
+applyTheme(savedTheme);
+// With no stored choice, follow the device if it changes under us.
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ()=>{
+  if(!document.documentElement.dataset.theme) applyTheme(null);
+});
+
+/* ── layout ───────────────────────────────────────────────── */
+/* Width alone cannot separate a phone from the panel: the 7" screen is
+   800x480 landscape and a phone on its side is around 844x390. So the
+   rule is "narrow, OR short-and-landscape but not as tall as the
+   panel". ?layout=mobile / ?layout=full overrides it for testing. */
+const MOBILE_Q = window.matchMedia(
+  "(max-width: 600px), (orientation: landscape) and (max-height: 450px) and (max-width: 900px)");
+const layoutOverride = new URLSearchParams(location.search).get("layout");
+
+function applyLayout(){
+  const mobile = layoutOverride ? layoutOverride === "mobile" : MOBILE_Q.matches;
+  document.body.dataset.layout = mobile ? "mobile" : "full";
+  if(mobile){ closeAll(); goto("home"); }   // never strand the user on a hidden view
+  renderDevices();
+}
+MOBILE_Q.addEventListener("change", applyLayout);
+applyLayout();
+
+/* ── MQTT ─────────────────────────────────────────────────── */
+function connect(cfg){
+  const proto = location.protocol==="https:" ? "wss" : "ws";
+  const url = cfg.url || `${proto}://${location.host}${cfg.path||"/mqtt"}`;
+
+  client = mqtt.connect(url, {
+    username: cfg.username, password: cfg.password,
+    clean:true, reconnectPeriod:3000, connectTimeout:12000, keepalive:45,
+    clientId: "web-" + Math.random().toString(16).slice(2,10),
+  });
+  el("kvBroker").textContent    = url.replace(/^wss?:\/\//,"");
+  el("kvTransport").textContent = url.startsWith("wss") ? "WebSocket over TLS" : "WebSocket (LAN)";
+
+  client.on("connect", ()=>{
+    setStatus("live","connected");
+    client.subscribe([T.strip.state,T.fairy.state,T.lamp.state,T.desk.state,
+                      T.indoor,T.outdoor,T.presence,T.avail,T.info], {qos:1});
+  });
+  client.on("reconnect", ()=>setStatus("wait","reconnecting"));
+  client.on("close",     ()=>setStatus("dead","offline"));
+  client.on("error", err=>{
+    setStatus("dead","error");
+    el("banner").hidden=false;
+    el("banner").textContent = "Broker: " + String(err && err.message || err);
+  });
+
+  client.on("message", (topic, buf)=>{
+    const msg = buf.toString();
+
+    let m = topic.match(new RegExp(`^${BASE}/([^/]+)/available$`));
+    if(m){
+      const up = (msg === "online");
+      if(m[1] in online) online[m[1]] = up;
+      (BOARDS[m[1]] || []).forEach(k=>{ if(state[k]) state[k].alive = up; });
+      renderSystem();
+      return renderDevices();
+    }
+
+    m = topic.match(new RegExp(`^${BASE}/([^/]+)/info$`));
+    if(m){
+      try{ if(m[1] in boardInfo) boardInfo[m[1]] = JSON.parse(msg); }catch(_){}
+      return renderSystem();
+    }
+
+    m = topic.match(new RegExp(`^${BASE}/presence/(.+)$`));
+    if(m){ try{ presence[m[1]] = JSON.parse(msg); }catch(_){} return renderPresence(); }
+
+    if(topic === T.indoor){
+      try{
+        const s = JSON.parse(msg);
+        if(typeof s.temp    === "number") indoor.tempC = s.temp;      // firmware sends °C
+        if(typeof s.humidity=== "number") indoor.hum   = s.humidity;
+        indoor.at = Date.now();
+      }catch(_){}
+      return renderEnv();
+    }
+
+    if(topic === T.outdoor){
+      try{
+        const s = JSON.parse(msg);
+        if(typeof s.temp    === "number") outdoor.tempC = s.temp;     // service sends °C
+        if(typeof s.humidity=== "number") outdoor.hum   = s.humidity;
+        if(s.desc) outdoor.desc = s.desc;
+        outdoor.at = Date.now();
+      }catch(_){}
+      renderSystem();
+      return renderEnv();
+    }
+
+    for(const k of ["strip","fairy","lamp","desk"]){
+      if(topic !== T[k].state) continue;
+      try{
+        const s = JSON.parse(msg);
+        if("state" in s)      state[k].on         = (s.state === "ON");
+        if("brightness" in s) state[k].brightness = s.brightness;
+        if("effect" in s)     state[k].effect     = s.effect;
+        if("mode"   in s)     state[k].mode       = s.mode;
+        if(s.color)           state[k].color      = rgbToHex(s.color);
+      }catch(_){ if(msg==="ON"||msg==="OFF") state[k].on = (msg==="ON"); }
+      return renderDevices();
+    }
+  });
+}
+
+/* ── demo seed (no broker reachable) ──────────────────────── */
+function seedDemo(){
+  setStatus("wait","demo");
+  el("banner").hidden = false;
+  el("banner").innerHTML = "<b>Demo mode.</b> No broker configured for this origin — controls change only this page.";
+  for(const k of ["strip","fairy","lamp","desk"]) state[k].alive = true;
+  state.strip.on = true; state.fairy.on = true;
+  indoor.tempC = 23.5; indoor.hum = 47; indoor.at = Date.now();
+  outdoor.tempC = 18.2; outdoor.hum = 63; outdoor.desc = "Partly cloudy"; outdoor.at = Date.now();
+  online.esp0 = online.esp1 = true;
+  boardInfo.esp0 = {ip:"10.1.10.42", broker:"local", ssid:"dorm-iot", rssi:-52};
+  boardInfo.esp1 = {ip:"10.4.22.87", broker:"cloud", ssid:"dorm-iot", rssi:-67};
+  presence.esp0 = {present:true, score:.031, threshold:.018, quiet:.009, rssi:-52, fps:38, status:"running"};
+  presence.esp1 = {present:false,score:.011, threshold:.019, quiet:.009, rssi:-61, fps:35, status:"running"};
+  el("kvBroker").textContent = "none"; el("kvTransport").textContent = "demo";
+}
+
+/* ── boot ─────────────────────────────────────────────────── */
+function ensureMqttLib(then){
+  if(typeof mqtt !== "undefined") return then();
+  const s = document.createElement("script");
+  s.src = "mqtt.min.js";                       // served alongside the page
+  s.onload  = then;
+  s.onerror = ()=>{ setStatus("dead","library missing");
+    el("banner").hidden=false; el("banner").textContent="mqtt.min.js is missing from this folder."; };
+  document.head.appendChild(s);
+}
+
+fetch("config.json", {cache:"no-store", credentials:"same-origin"})
+  .then(r => r.ok ? r.json() : Promise.reject(new Error("no config")))
+  .then(cfg => {
+    CFG = cfg; DEMO = false;
+    ensureMqttLib(()=>connect(cfg));
+    // Cloudflare Access stamps the verified identity on the request;
+    // on the LAN kiosk the header is absent and this stays "this device".
+    fetch("whoami", {cache:"no-store", credentials:"same-origin"})
+      .then(r => r.ok ? r.json() : null)
+      .then(w => { el("kvUser").textContent = (w && w.user) || "this device (local)"; })
+      .catch(()=>{ el("kvUser").textContent = "this device (local)"; });
+  })
+  .catch(()=>{
+    // No config.json: either this is the public copy, or nothing is
+    // configured at all.
+    const pub = publicBrokerConfig();
+    if(pub){
+      DEMO = false;
+      el("kvUser").textContent = "public page (no sign-in)";
+      ensureMqttLib(()=>connect(pub));
+      return;
+    }
+    DEMO = true; seedDemo(); renderAll();
+  });
+
+function renderAll(){ tickClock(); renderEnv(); renderDevices(); renderPresence(); renderSystem(); }
+document.title = ROOM_NAME;
+renderAll();
+goto("home");
+
+setInterval(tickClock, 1000);
+setInterval(()=>{ renderEnv(); renderSystem(); }, 5000);
+
+/* Keep the 7" panel awake while it is the active screen. */
+if("wakeLock" in navigator){
+  const grab = ()=> navigator.wakeLock.request("screen").catch(()=>{});
+  grab();
+  document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) grab(); });
+}
+</script>
+</body>
+</html>
