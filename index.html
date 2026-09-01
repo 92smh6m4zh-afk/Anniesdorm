@@ -679,11 +679,11 @@ let anyOnBefore = false;   // edge-detect the all-off -> something-on moment
    Pages copy.
    ═══════════════════════════════════════════════════════════ */
 const PUBLIC_BROKER = {
-  host:     "",            // "xxxxxxxx.s1.eu.hivemq.cloud"
+  host:     "e3a13c7fbd494724aa73555c0a8566b9.s1.eu.hivemq.cloud",            // 
   port:     8884,          // HiveMQ Cloud WebSocket-over-TLS port
   path:     "/mqtt",
-  username: "",            // e.g. "webpublic"
-  password: "",
+  username: "webpublic",           // e.g. "webpublic"
+  password: "Xb2vs6GeIKjR1ug",
 };
 
 function publicBrokerConfig(){
@@ -703,6 +703,12 @@ const T = {
   desk:  { set:`${BASE}/desk/set`,  state:`${BASE}/desk/state`  },
   indoor:   `${BASE}/sensor/indoor`,          // the DHT22 on ESP1
   outdoor:  `${BASE}/sensor/outdoor`,
+  /* "I want the room dark" — an intent, not a light state. The panel
+     cannot infer this from the lights alone: turning off the last lamp
+     by hand is not the same request as pressing Everything off, and
+     only one of them should blank the clock. Never retained; a stale
+     copy would blank the panel every time the page reloaded. */
+  screen:   `${BASE}/panel/screen`,
   presence: `${BASE}/presence/+`,
   avail:    `${BASE}/+/available`,
   info:     `${BASE}/+/info`,
@@ -947,8 +953,18 @@ function wireOneTile(tile, key){
 
 const allOff = ()=>{
   ["strip","fairy","lamp","desk"].forEach(k=>publish(k,{on:false}));
-  // Give the publishes a moment to land and the tiles to repaint before
-  // the screen goes dark, so the last thing seen is the correct state.
+
+  /* Tell the panel, wherever this was pressed. Without this the button
+     only ever blanked the screen of the device it was pressed on, so
+     from a phone the panel stayed lit — which is precisely backwards,
+     since reaching for your phone is when you are least likely to be
+     standing at the panel. */
+  if(client && client.connected)
+    client.publish(T.screen, "off", {qos:1, retain:false});
+
+  // And act locally too, so the panel's own button still works with the
+  // broker unreachable. setBacklight() ignores a no-op, so the message
+  // coming back to us a moment later costs nothing.
   if(onPanel) setTimeout(()=>{ anyOnBefore = false; setBacklight(false); }, 600);
 };
 el("allOff").onclick  = allOff;
@@ -1155,7 +1171,7 @@ function connect(cfg){
   client.on("connect", ()=>{
     setStatus("live","connected");
     client.subscribe([T.strip.state,T.fairy.state,T.lamp.state,T.desk.state,
-                      T.indoor,T.outdoor,T.presence,T.avail,T.info], {qos:1});
+                      T.indoor,T.outdoor,T.presence,T.avail,T.info,T.screen], {qos:1});
   });
   client.on("reconnect", ()=>setStatus("wait","reconnecting"));
   client.on("close",     ()=>setStatus("dead","offline"));
@@ -1185,6 +1201,18 @@ function connect(cfg){
 
     m = topic.match(new RegExp(`^${BASE}/presence/(.+)$`));
     if(m){ try{ presence[m[1]] = JSON.parse(msg); }catch(_){} return renderPresence(); }
+
+    if(topic === T.screen){
+      // Only the panel has a backlight to blank; every other client
+      // subscribes and ignores it.
+      //
+      // setBacklight() takes "should the screen be LIT", so the payload
+      // maps straight through: "on" lights it, anything else blanks it.
+      // Written the other way round first, which made "off" turn the
+      // screen ON — and read on the bench exactly like a one-step lag.
+      if(onPanel){ anyOnBefore = false; setBacklight(msg.trim() === "on"); }
+      return;
+    }
 
     if(topic === T.indoor){
       try{
