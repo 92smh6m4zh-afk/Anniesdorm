@@ -56,14 +56,19 @@
   header{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:10px;flex:0 0 auto}
   .crumb{display:flex;align-items:center;gap:9px;min-width:0}
   /* Sized for a fingertip on a wall panel, not a mouse pointer. */
+  /* Rectangular and labelled rather than a square icon: on a wall panel
+     you press this from a step away, and a word is a bigger target than
+     a chevron in every sense. */
   #back{
-    display:none;width:52px;height:52px;flex:0 0 auto;border-radius:15px;border:1px solid var(--rule);
-    background:var(--card);color:var(--ink);cursor:pointer;padding:0;place-items:center;
-    transition:background .15s,transform .1s;
+    display:none;height:58px;padding:0 20px 0 15px;flex:0 0 auto;
+    border-radius:12px;border:1px solid var(--rule);
+    background:var(--card);color:var(--ink);cursor:pointer;
+    align-items:center;gap:9px;font:inherit;font-size:19px;font-weight:650;
+    letter-spacing:-.01em;transition:background .15s,transform .1s;
   }
-  #back:active{transform:scale(.94);background:var(--card-hi)}
-  #back svg{width:26px;height:26px;display:block}
-  body[data-view="controls"] #back{display:grid}
+  #back:active{transform:scale(.97);background:var(--card-hi)}
+  #back svg{width:26px;height:26px;display:block;flex:0 0 auto}
+  body[data-view="controls"] #back{display:flex}
   h1{font-size:21px;font-weight:700;letter-spacing:-.02em;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .topright{display:flex;align-items:center;gap:8px;flex:0 0 auto}
   #status{
@@ -106,17 +111,21 @@
     gap:0 clamp(14px,3.5vw,34px);
     padding:clamp(18px,4vh,44px) 18px;
   }
+  /* Bold and large: this is read from across the room, and a hairline
+     weight is the first thing to disappear at distance. Bold digits are
+     wider, so the sizes below were checked at 800x480 with the date
+     beside them — the clock must never push the panel into scrolling. */
   .clock .t{
-    font-size:clamp(68px,21vw,150px);font-weight:200;letter-spacing:-.05em;line-height:.9;
+    font-size:clamp(76px,23vw,164px);font-weight:700;letter-spacing:-.045em;line-height:.9;
     font-variant-numeric:tabular-nums;display:flex;align-items:baseline;gap:.05em;
   }
-  .clock .t .ampm{font-size:.24em;font-weight:500;letter-spacing:.02em;color:var(--ink-soft)}
+  .clock .t .ampm{font-size:.24em;font-weight:700;letter-spacing:.01em;color:var(--ink-soft)}
   .clock .d{
     display:flex;flex-direction:column;align-items:flex-end;text-align:right;
-    font-weight:300;color:var(--ink-soft);letter-spacing:-.005em;line-height:1.18;
+    font-weight:700;color:var(--ink-soft);letter-spacing:-.01em;line-height:1.16;
   }
-  .clock .d .dow{font-size:clamp(17px,4.4vw,30px)}
-  .clock .d .dmy{font-size:clamp(15px,3.7vw,25px);color:var(--ink-faint)}
+  .clock .d .dow{font-size:clamp(19px,4.8vw,34px)}
+  .clock .d .dmy{font-size:clamp(17px,4.0vw,28px);color:var(--ink-faint)}
 
   /* ── HOME: the two stat cards ───────────────────────────── */
   .duo{display:grid;grid-template-columns:1fr 1fr;gap:var(--gap);flex:0 0 auto}
@@ -313,9 +322,11 @@
     h1{font-size:18px}
     #gear{width:34px;height:34px}
     .clock{flex:1 1 auto;padding:8px 16px}
-    .clock .t{font-size:clamp(104px,31vh,156px)}
-    .clock .d .dow{font-size:30px}
-    .clock .d .dmy{font-size:24px}
+    .clock .t{font-size:clamp(112px,33vh,168px)}
+    .clock .d .dow{font-size:34px}
+    .clock .d .dmy{font-size:27px}
+    /* The header has to stay on one line next to a wider back button. */
+    #back{height:54px;font-size:18px}
     /* Four across, centred in the space, sized for fingers rather
        than stretched to the full height — a 360px-tall tile is just
        a lot of empty card. */
@@ -335,7 +346,7 @@
      footnotes go; the clock stays large, since reading the time across
      the room is the whole point of the thing. */
   @media (orientation:landscape) and (max-height:500px){
-    .clock .t{font-size:clamp(96px,28vh,140px)}
+    .clock .t{font-size:clamp(102px,30vh,152px)}
     .foot{display:none}
   }
 </style>
@@ -346,6 +357,7 @@
   <div class="crumb">
     <button id="back" aria-label="Back">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+      <span>Back</span>
     </button>
     <h1 id="title">Annie’s Dorm</h1>
   </div>
@@ -700,7 +712,7 @@ let anyOnBefore = false;   // edge-detect the all-off -> something-on moment
    Pages copy.
    ═══════════════════════════════════════════════════════════ */
 const PUBLIC_BROKER = {
-  host:     "e3a13c7fbd494724aa73555c0a8566b9.s1.eu.hivemq.cloud",            // "xxxxxxxx.s1.eu.hivemq.cloud"
+  host:     "e3a13c7fbd494724aa73555c0a8566b9.s1.eu.hivemq.cloud",            //
   port:     8884,          // HiveMQ Cloud WebSocket-over-TLS port
   path:     "/mqtt",
   username: "webpublic",            // e.g. "webpublic"
@@ -724,13 +736,23 @@ const T = {
   desk:  { set:`${BASE}/desk/set`,  state:`${BASE}/desk/state`  },
   indoor:   `${BASE}/sensor/indoor`,          // the DHT22 on ESP1
   outdoor:  `${BASE}/sensor/outdoor`,
+  /* "I want the room dark" — an intent, not a light state. The panel
+     cannot infer this from the lights alone: turning off the last lamp
+     by hand is not the same request as pressing Everything off, and
+     only one of them should blank the clock. Never retained; a stale
+     copy would blank the panel every time the page reloaded. */
+  screen:   `${BASE}/panel/screen`,
   presence: `${BASE}/presence/+`,
   avail:    `${BASE}/+/available`,
   info:     `${BASE}/+/info`,
   cmd:      `${BASE}/cmd`,
 };
 /* Which board owns which light — drives the "offline" dimming. */
-const BOARDS = { esp0:["strip","lamp"], esp1:["fairy","desk"] };
+// Follows the wiring: ESP0 has the strip, the fairy lights and the
+// DHT22; ESP1 has the lamp and the desk light. This map is what marks
+// a tile "offline" when its board drops, so it has to match reality or
+// the wrong lights grey out.
+const BOARDS = { esp0:["strip","fairy"], esp1:["lamp","desk"] };
 
 const el = id => document.getElementById(id);
 // Both layouts carry the same data-bind names, so one call updates
@@ -968,8 +990,18 @@ function wireOneTile(tile, key){
 
 const allOff = ()=>{
   ["strip","fairy","lamp","desk"].forEach(k=>publish(k,{on:false}));
-  // Give the publishes a moment to land and the tiles to repaint before
-  // the screen goes dark, so the last thing seen is the correct state.
+
+  /* Tell the panel, wherever this was pressed. Without this the button
+     only ever blanked the screen of the device it was pressed on, so
+     from a phone the panel stayed lit — which is precisely backwards,
+     since reaching for your phone is when you are least likely to be
+     standing at the panel. */
+  if(client && client.connected)
+    client.publish(T.screen, "off", {qos:1, retain:false});
+
+  // And act locally too, so the panel's own button still works with the
+  // broker unreachable. setBacklight() ignores a no-op, so the message
+  // coming back to us a moment later costs nothing.
   if(onPanel) setTimeout(()=>{ anyOnBefore = false; setBacklight(false); }, 600);
 };
 el("allOff").onclick  = allOff;
@@ -1176,14 +1208,38 @@ function connect(cfg){
   client.on("connect", ()=>{
     setStatus("live","connected");
     client.subscribe([T.strip.state,T.fairy.state,T.lamp.state,T.desk.state,
-                      T.indoor,T.outdoor,T.presence,T.avail,T.info], {qos:1});
+                      T.indoor,T.outdoor,T.presence,T.avail,T.info,T.screen], {qos:1});
   });
   client.on("reconnect", ()=>setStatus("wait","reconnecting"));
   client.on("close",     ()=>setStatus("dead","offline"));
+
+  /* A dropped MQTT connection is normal and self-healing: a phone that
+     slept, Wi-Fi that roamed between the dorm's access points, a missed
+     PINGRESP. mqtt.js reconnects within seconds and nothing is lost,
+     because every state topic is retained.
+
+     So the status dot reports it immediately, and the banner — which is
+     a full-width block that does not go away on its own — waits to see
+     whether it is still broken. "Keepalive timeout" flashing up on a
+     connection that recovers before you finish reading it is noise, and
+     noise in an error channel is worse than nothing: it teaches you to
+     ignore the channel. */
+  let brokerTrouble = null;
+  const clearTrouble = ()=>{
+    clearTimeout(brokerTrouble); brokerTrouble = null;
+    if(el("banner").dataset.who === "broker") el("banner").hidden = true;
+  };
+  client.on("connect", clearTrouble);
   client.on("error", err=>{
     setStatus("dead","error");
-    el("banner").hidden=false;
-    el("banner").textContent = "Broker: " + String(err && err.message || err);
+    if(brokerTrouble) return;                  // already counting down
+    const text = "Broker: " + String(err && err.message || err);
+    brokerTrouble = setTimeout(()=>{
+      if(client && client.connected) return;   // it fixed itself
+      el("banner").dataset.who = "broker";
+      el("banner").hidden = false;
+      el("banner").textContent = text + " — still retrying.";
+    }, 15000);
   });
 
   client.on("message", (topic, buf)=>{
@@ -1206,6 +1262,18 @@ function connect(cfg){
 
     m = topic.match(new RegExp(`^${BASE}/presence/(.+)$`));
     if(m){ try{ presence[m[1]] = JSON.parse(msg); }catch(_){} return renderPresence(); }
+
+    if(topic === T.screen){
+      // Only the panel has a backlight to blank; every other client
+      // subscribes and ignores it.
+      //
+      // setBacklight() takes "should the screen be LIT", so the payload
+      // maps straight through: "on" lights it, anything else blanks it.
+      // Written the other way round first, which made "off" turn the
+      // screen ON — and read on the bench exactly like a one-step lag.
+      if(onPanel){ anyOnBefore = false; setBacklight(msg.trim() === "on"); }
+      return;
+    }
 
     if(topic === T.indoor){
       try{
