@@ -553,8 +553,10 @@
          <div class="sheet-sub" id="sheetSub">off</div></div>
     <button class="switch" id="sheetSwitch" aria-label="Toggle"></button>
   </div>
-  <label class="field" for="sheetBright">Brightness</label>
-  <input type="range" id="sheetBright" min="1" max="255" value="180">
+  <div id="brightBlock">
+    <label class="field" for="sheetBright">Brightness</label>
+    <input type="range" id="sheetBright" min="1" max="255" value="180">
+  </div>
   <div id="colourBlock">
     <label class="field">Colour</label>
     <div class="swatches" id="swatches">
@@ -691,11 +693,11 @@ let anyOnBefore = false;   // edge-detect the all-off -> something-on moment
    Pages copy.
    ═══════════════════════════════════════════════════════════ */
 const PUBLIC_BROKER = {
-  host:     "e3a13c7fbd494724aa73555c0a8566b9.s1.eu.hivemq.cloud",            //
+  host:     "",            // "xxxxxxxx.s1.eu.hivemq.cloud"
   port:     8884,          // HiveMQ Cloud WebSocket-over-TLS port
   path:     "/mqtt",
-  username: "webpublic",            // e.g. "webpublic"
-  password: "Xb2vs6GeIKjR1ug",
+  username: "",            // e.g. "webpublic"
+  password: "",
 };
 
 function publicBrokerConfig(){
@@ -743,8 +745,11 @@ const $$ = sel => Array.from(document.querySelectorAll(sel));
 const state = {
   strip:{on:false,alive:false,brightness:180,color:"#ffb46b",effect:"solid"},
   fairy:{on:false,alive:false,brightness:200,mode:"both"},
-  lamp: {on:false,alive:false,brightness:255},
-  desk: {on:false,alive:false,brightness:255},
+  /* dimmable defaults true and is corrected by the board's own state
+     message. A relay-driven light cannot dim, and showing a slider that
+     does nothing is worse than showing no slider: it looks broken. */
+  lamp: {on:false,alive:false,brightness:255,dimmable:true},
+  desk: {on:false,alive:false,brightness:255,dimmable:true},
 };
 const LABEL = { strip:"LED Strip", fairy:"Fairy Lights", lamp:"Lamp", desk:"Desk Light" };
 const HAS_COLOUR = { strip:true };
@@ -813,8 +818,9 @@ function renderDevices(){
     let sub;
     if(!s.alive)         sub = "offline";
     else if(!s.on)       sub = "off";
-    else if(k==="strip") sub = `${pct(s.brightness)}% · ${s.effect}`;
-    else                 sub = `${pct(s.brightness)}%`;
+    else if(k==="strip")     sub = `${pct(s.brightness)}% · ${s.effect}`;
+    else if(!s.dimmable)     sub = "on";
+    else                     sub = `${pct(s.brightness)}%`;
     setAll(k+"Sub", sub);
   }
   const n = ["strip","fairy","lamp","desk"].filter(k=>state[k].on && state[k].alive).length;
@@ -870,9 +876,11 @@ function renderSystem(){
 function renderSheet(){
   const s = state[sheetFor];
   el("sheetTitle").textContent = LABEL[sheetFor];
-  el("sheetSub").textContent = !s.alive ? "offline" : (s.on ? `${pct(s.brightness)}%` : "off");
+  el("sheetSub").textContent = !s.alive ? "offline"
+                             : (s.on ? (s.dimmable === false ? "on" : `${pct(s.brightness)}%`) : "off");
   el("sheetSwitch").classList.toggle("on", s.on);
   el("sheetBright").value = s.brightness;
+  el("brightBlock").hidden = (s.dimmable === false);
   el("colourBlock").hidden = !HAS_COLOUR[sheetFor];
   el("fairyBlock").hidden  = !HAS_GROUPS[sheetFor];
   if(HAS_COLOUR[sheetFor]){
@@ -1285,6 +1293,7 @@ function connect(cfg){
         if("brightness" in s) state[k].brightness = s.brightness;
         if("effect" in s)     state[k].effect     = s.effect;
         if("mode"   in s)     state[k].mode       = s.mode;
+        if("dimmable" in s)   state[k].dimmable   = !!s.dimmable;
         if(s.color)           state[k].color      = rgbToHex(s.color);
       }catch(_){ if(msg==="ON"||msg==="OFF") state[k].on = (msg==="ON"); }
       return renderDevices();
